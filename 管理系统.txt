@@ -1,0 +1,347 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <regex>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
+
+using namespace std;
+
+// 预留给后续 User 类使用：学生和教师都可以拥有一张课程表
+// 后续可以让 User 类保存 id、name、password、role，再把 id 和 role 传给 CourseTable。
+enum class UserRole {
+    Student,
+    Teacher
+};
+
+string roleToString(UserRole role) {
+    return role == UserRole::Student ? "Student" : "Teacher";
+}
+
+class Course {
+private:
+    string courseName;   // 课程名称，可自由输入
+    string teacherName;  // 任课教师
+    int weekday;         // 星期：1-7，分别表示周一到周日
+    int period;          // 节次：1-12
+    double credit;       // 学分：一位小数
+    string classroom;    // 教室：如 A1 101
+
+public:
+    Course() : weekday(1), period(1), credit(0.0) {}
+
+    Course(const string& courseName,
+           const string& teacherName,
+           int weekday,
+           int period,
+           double credit,
+           const string& classroom)
+        : courseName(courseName),
+          teacherName(teacherName),
+          weekday(weekday),
+          period(period),
+          credit(credit),
+          classroom(classroom) {}
+
+    // ---------- 合法性判断 ----------
+    static bool isValidWeekday(int weekday) {
+        return weekday >= 1 && weekday <= 7;
+    }
+
+    static bool isValidPeriod(int period) {
+        return period >= 1 && period <= 12;
+    }
+
+    // 教室格式：楼栋为“字母+单个数字”，中间一个空格，房间号三位数，例如 A1 101
+    static bool isValidClassroom(const string& classroom) {
+        static const regex pattern("^[A-Za-z][0-9] [0-9]{3}$");
+        return regex_match(classroom, pattern);
+    }
+
+    // 输入时用字符串检查，保证确实是一位小数，例如 3.0、2.5
+    static bool isValidCreditText(const string& creditText) {
+        static const regex pattern("^[0-9]+\\.[0-9]$");
+        return regex_match(creditText, pattern);
+    }
+
+    bool isValid() const {
+        ostringstream oss;
+        oss << fixed << setprecision(1) << credit;
+
+        return !courseName.empty()
+            && !teacherName.empty()
+            && isValidWeekday(weekday)
+            && isValidPeriod(period)
+            && isValidCreditText(oss.str())
+            && isValidClassroom(classroom);
+    }
+
+    // ---------- Getter ----------
+    string getCourseName() const {
+        return courseName;
+    }
+
+    string getTeacherName() const {
+        return teacherName;
+    }
+
+    int getWeekday() const {
+        return weekday;
+    }
+
+    int getPeriod() const {
+        return period;
+    }
+
+    double getCredit() const {
+        return credit;
+    }
+
+    string getClassroom() const {
+        return classroom;
+    }
+
+    // ---------- Setter ----------
+    void setCourseName(const string& value) {
+        courseName = value;
+    }
+
+    void setTeacherName(const string& value) {
+        teacherName = value;
+    }
+
+    void setWeekday(int value) {
+        weekday = value;
+    }
+
+    void setPeriod(int value) {
+        period = value;
+    }
+
+    void setCredit(double value) {
+        credit = value;
+    }
+
+    void setClassroom(const string& value) {
+        classroom = value;
+    }
+
+    // ---------- 冲突判断 ----------
+    // 同一天同一节次不能安排两门课程
+    bool hasTimeConflictWith(const Course& other) const {
+        return weekday == other.weekday && period == other.period;
+    }
+
+    // 同一教室同一时间不能被多门课程占用
+    bool hasClassroomConflictWith(const Course& other) const {
+        return weekday == other.weekday
+            && period == other.period
+            && classroom == other.classroom;
+    }
+
+    static string weekdayToChinese(int weekday) {
+        static const string names[] = {
+            "", "周一", "周二", "周三", "周四", "周五", "周六", "周日"
+        };
+
+        if (weekday < 1 || weekday > 7) {
+            return "未知";
+        }
+
+        return names[weekday];
+    }
+
+    void print() const {
+        cout << left
+             << setw(16) << courseName
+             << setw(12) << teacherName
+             << setw(8)  << weekdayToChinese(weekday)
+             << setw(8)  << (to_string(period) + "节")
+             << setw(8)  << fixed << setprecision(1) << credit
+             << setw(10) << classroom
+             << '\n';
+    }
+
+    // 预留文件保存接口：后续可以按 ownerId 分文件保存，例如 courses_student_1001.txt
+    string toCsvLine() const {
+        ostringstream oss;
+
+        oss << courseName << ','
+            << teacherName << ','
+            << weekday << ','
+            << period << ','
+            << fixed << setprecision(1) << credit << ','
+            << classroom;
+
+        return oss.str();
+    }
+};
+
+class CourseTable {
+private:
+    string ownerId;       // 后续与 User 类联动：用户编号
+    UserRole ownerRole;   // 后续与 User 类联动：学生或教师
+    vector<Course> courses;
+
+public:
+    CourseTable(const string& ownerId, UserRole ownerRole)
+        : ownerId(ownerId), ownerRole(ownerRole) {}
+
+    string getOwnerId() const {
+        return ownerId;
+    }
+
+    UserRole getOwnerRole() const {
+        return ownerRole;
+    }
+
+    bool canAddCourse(const Course& newCourse, string& reason) const {
+        if (!newCourse.isValid()) {
+            reason = "课程信息不合法，请检查课程名、教师、星期、节次、学分和教室格式。";
+            return false;
+        }
+
+        for (const auto& oldCourse : courses) {
+            if (newCourse.hasTimeConflictWith(oldCourse)) {
+                reason = "时间冲突：同一天同一节次已经存在课程。";
+                return false;
+            }
+
+            if (newCourse.hasClassroomConflictWith(oldCourse)) {
+                reason = "教室冲突：同一教室同一时间已经被占用。";
+                return false;
+            }
+        }
+
+        reason = "可以添加。";
+        return true;
+    }
+
+    bool addCourse(const Course& newCourse) {
+        string reason;
+
+        if (!canAddCourse(newCourse, reason)) {
+            cout << reason << '\n';
+            return false;
+        }
+
+        courses.push_back(newCourse);
+        cout << "课程添加成功。\n";
+        return true;
+    }
+
+    void showAllCourses() const {
+        cout << "\n用户编号：" << ownerId
+             << "，用户身份：" << roleToString(ownerRole) << '\n';
+
+        cout << left
+             << setw(16) << "课程名称"
+             << setw(12) << "任课教师"
+             << setw(8)  << "星期"
+             << setw(8)  << "节次"
+             << setw(8)  << "学分"
+             << setw(10) << "教室"
+             << '\n';
+
+        cout << string(62, '-') << '\n';
+
+        vector<Course> sortedCourses = courses;
+
+        sort(sortedCourses.begin(), sortedCourses.end(),
+             [](const Course& a, const Course& b) {
+                 if (a.getWeekday() != b.getWeekday()) {
+                     return a.getWeekday() < b.getWeekday();
+                 }
+                 return a.getPeriod() < b.getPeriod();
+             });
+
+        for (const auto& course : sortedCourses) {
+            course.print();
+        }
+    }
+
+    void showByWeekday(int weekday) const {
+        if (!Course::isValidWeekday(weekday)) {
+            cout << "星期输入错误，应为1-7。\n";
+            return;
+        }
+
+        cout << "\n" << Course::weekdayToChinese(weekday) << "课程如下：\n";
+
+        bool found = false;
+
+        for (const auto& course : courses) {
+            if (course.getWeekday() == weekday) {
+                course.print();
+                found = true;
+            }
+        }
+
+        if (!found) {
+            cout << "当天没有课程。\n";
+        }
+    }
+};
+
+Course inputCourse() {
+    string courseName;
+    string teacherName;
+    string classroom;
+    string creditText;
+    int weekday;
+    int period;
+
+    cout << "请输入课程名称：";
+    getline(cin, courseName);
+
+    cout << "请输入任课教师：";
+    getline(cin, teacherName);
+
+    cout << "请输入星期（1-7，1表示周一）：";
+    cin >> weekday;
+
+    cout << "请输入节次（1-12）：";
+    cin >> period;
+
+    cout << "请输入学分（一位小数，例如 3.0）：";
+    cin >> creditText;
+
+    cin.ignore();
+
+    cout << "请输入教室（格式如 A1 101）：";
+    getline(cin, classroom);
+
+    if (!Course::isValidCreditText(creditText)) {
+        // 这里先返回一个非法 Course，让 addCourse 统一提示错误
+        return Course(courseName, teacherName, weekday, period, -1.0, classroom);
+    }
+
+    return Course(courseName, teacherName, weekday, period, stod(creditText), classroom);
+}
+
+int main() {
+    // 示例：当前先创建一个学生课程表。
+    // 后续加入 User 类后，可以写成：
+    // CourseTable table(currentUser.getId(), currentUser.getRole());
+
+    CourseTable studentTable("student_1001", UserRole::Student);
+
+    // 直接添加几门示例课，课程名可以随意输入
+    studentTable.addCourse(Course("高等数学", "张老师", 1, 1, 4.0, "A1 101"));
+    studentTable.addCourse(Course("C++程序设计", "徐老师", 2, 3, 3.5, "B2 203"));
+    studentTable.addCourse(Course("大学英语", "李老师", 3, 5, 2.0, "C3 305"));
+
+    // 如需测试手动录入，取消下面两行注释即可
+    // Course c = inputCourse();
+    // studentTable.addCourse(c);
+
+    studentTable.showAllCourses();
+    studentTable.showByWeekday(2);
+
+    // 示例：教师也可以拥有自己的课程表，后续可与教师用户类绑定
+    CourseTable teacherTable("teacher_2001", UserRole::Teacher);
+    teacherTable.addCourse(Course("C++程序设计", "徐老师", 2, 3, 3.5, "B2 203"));
+
+    return 0;
+}
