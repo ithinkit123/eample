@@ -343,7 +343,7 @@ int main() {
     // 示例：教师也可以拥有自己的课程表，后续可与教师用户类绑定
     CourseTable teacherTable("teacher_2001", UserRole::Teacher);
     teacherTable.addCourse(Course("C++程序设计", "徐老师", 2, 3, 3.5, "B2 203"));
-
+sd
     return 0;
 }
 =======
